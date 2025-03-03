@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
 
+# Loads .env locally
+load_dotenv()
+
 app = FastAPI()
 
 image_dir = "/app/images"
@@ -121,7 +124,7 @@ async def segment(file: UploadFile = File(...)):
         # })
         return JSONResponse(content={
             "message": "Segmentation completed.",
-            "cropped_image_path": f"{IMAGE_URL}"
+            "cropped_image_path": str(os.getenv("IMAGE_URL"))
             # "cropped_image_path": cropped_img_path
         })
 
