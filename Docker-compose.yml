@@ -1,0 +1,14 @@
+services: 
+  
+  image_processing:
+    image: ${IMAGE_NAME}
+    volumes:
+      - ${BIND_MOUNT_PATH}:/app/images
+    ports:
+      - 8000:8000
+    container_name: yolo_server
+    environment:
+      - IMAGE_URL={IMAGE_URL}
+      
+
+   
