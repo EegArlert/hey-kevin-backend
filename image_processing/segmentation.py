@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from ultralytics import YOLO
+from ultralytics import SAM
+import torch
+
+print("[DEBUG] Torch Device:", torch.cuda.is_available())
 
 # Loads .env locally
 load_dotenv()
@@ -21,12 +24,12 @@ if not os.path.exists(image_dir):
 app.mount("/images", StaticFiles(directory="/app/images"), name="images")
 
 # Load YOLO model
-model = YOLO("yolo11x-seg.pt")
+model = SAM("sam_b.pt")
 
 def overlay_mask(image, mask, color=(0, 255, 0), alpha=0.5):
     """Apply a segmentation mask as a transparent overlay on an image"""
     # Convert to binary mask
-    mask = (mask * 255).astype(np.uint8)  
+    mask = (mask > 0.5).astype(np.uint8) * 255
     # Resize mask
     mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)  
     colored_mask = np.zeros_like(image)
@@ -44,45 +47,94 @@ async def segment(file: UploadFile = File(...)):
     try:
         # Read image file
         contents = await file.read()
+        print("[DEBUG] Received image file, size:", len(contents))
         np_arr = np.frombuffer(contents, np.uint8)
+        print("[DEBUG] Converted to numpy array, shape:", np_arr.shape)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
         if img is None:
             print("[ERROR] Image decoding failed!")
             return JSONResponse(status_code=400, content={"error": "Failed to decode image"})
 
-        print("[INFO] Image received. Running YOLO segmentation...")
+        print("[DEBUG] Image successfully decoded, shape:", img.shape)
 
         # Run YOLO segmentation
-        predictions = model.predict(img, conf=0.2, save=False)
+        # Reduce image size to 25%
+        scale_factor = 0.25  # Resize to 25% of original size
+        new_width = int(img.shape[1] * scale_factor)
+        new_height = int(img.shape[0] * scale_factor)
 
+        img_resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        print("[DEBUG] Resized image shape:", img_resized.shape)
+        # predictions = model.predict(img, conf=0.9, save=False)
+        # img = cv2.resize(img, (img.shape[1] // 2, img.shape[0] // 2), interpolation=cv2.INTER_AREA)
+        # print("[DEBUG] Resized image to:", img.shape)
+
+        # Run SAM segmentation
+        print("[DEBUG] Running SAM model...")
+        predictions = model(img)  # Make sure this works
         # Extract bounding boxes & masks
+        # result = predictions[0]
+        # boxes = result.boxes.xyxy.cpu().numpy().tolist() if result.boxes is not None else []
+        # masks = result.masks.data.cpu().numpy() if result.masks is not None else None
+
+        # print(f"[INFO] Detected {len(boxes)} objects")
+
+        # if not boxes:
+        #     print("[INFO] No object detected.")
+        #     return JSONResponse(content={"message": "No object detected", "cropped_image": None})
+        
+        # Get the first prediction result
         result = predictions[0]
-        boxes = result.boxes.xyxy.cpu().numpy().tolist() if result.boxes is not None else []
-        masks = result.masks.data.cpu().numpy() if result.masks is not None else None
 
-        print(f"[INFO] Detected {len(boxes)} objects")
+        # Ensure masks exist
+        if result.masks is None:
+            print("[INFO] No segmentation masks found.")
+            return JSONResponse(content={"message": "No segmentation masks found", "segmented_image": None})
 
-        if not boxes:
-            print("[INFO] No object detected.")
-            return JSONResponse(content={"message": "No object detected", "cropped_image": None})
+        # Get all masks
+        masks = result.masks.data.cpu().numpy()
+
+        # Apply all masks to the image
+        segmented_img = img.copy()
+        for mask in masks:
+            segmented_img = overlay_mask(segmented_img, mask)
+
+        # Save segmented image
+        segmented_img_path = "/app/images/segmented.jpg"
+        cv2.imwrite(segmented_img_path, segmented_img)
+
+        print("[INFO] Segmented image saved successfully.")
+
+        # Return the processed image path
+        return JSONResponse(content={
+            "message": "Segmentation completed.",
+            "segmented_image_path": str(os.getenv("IMAGE_URL"))
+        })
+
 
         # Get image center
         img_h, img_w, _ = img.shape
         img_center = np.array([img_w / 2, img_h / 2])
 
         # Find the box closest to the center
-        def box_center(box):
-            return np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
+        # Find the most centered object
+        def distance_from_center(box):
+            box_x_center = (box[0] + box[2]) / 2
+            box_y_center = (box[1] + box[3]) / 2
+            return np.linalg.norm(np.array([box_x_center, box_y_center]) - img_center)
 
-        closest_idx = min(range(len(boxes)), key=lambda i: np.linalg.norm(box_center(boxes[i]) - img_center))
-        closest_box = boxes[closest_idx]
-        mask = masks[closest_idx] if masks is not None else None
+        # Select the most centered object
+        centered_idx = min(range(len(boxes)), key=lambda i: distance_from_center(boxes[i]))
 
-        print(f"[INFO] Closest object bounding box: {closest_box}")
+        # Get the bounding box and mask for the centered object
+        centered_box = boxes[centered_idx]
+        mask = masks[centered_idx] if masks is not None else None
+
+        print(f"[INFO] Most centered object bounding box: {centered_box}")
 
         # Convert bbox to integers
-        x1, y1, x2, y2 = map(int, closest_box)
+        x1, y1, x2, y2 = map(int, centered_box)
         
         box_width = x2 - x1
         box_height = y2 - y1
@@ -117,11 +169,7 @@ async def segment(file: UploadFile = File(...)):
         cv2.imwrite(cropped_img_path, cropped_img)
 
         print("[INFO] Cropped image saved successfully.")
-
-        # return JSONResponse(content={
-        #     "message": "Segmentation completed.",
-        #     "cropped_image_path": cropped_img_path
-        # })
+        
         return JSONResponse(content={
             "message": "Segmentation completed.",
             "cropped_image_path": str(os.getenv("IMAGE_URL"))
