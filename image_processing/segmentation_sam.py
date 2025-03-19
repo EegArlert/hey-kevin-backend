@@ -63,7 +63,6 @@ async def log_requests(request: Request, call_next):
 async def segment(file: UploadFile = File(...)):
     try:
         print("[INFO] Received request at /segment")
-        print("[INFO] Received request at /segment ")
         # Read and save the image
         contents = await file.read()
         img_path = os.path.join(image_dir, file.filename)

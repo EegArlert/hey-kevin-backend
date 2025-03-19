@@ -17,7 +17,7 @@ WORKDIR /app
 
 # RUN pip install git+https://github.com/facebookresearch/segment-anything.git
     
-COPY ./sam /app/sam
+# COPY ./sam /app/sam
     
 COPY ./segmentation.py /app
 
