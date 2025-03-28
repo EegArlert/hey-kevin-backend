@@ -8,5 +8,7 @@ services:
     container_name: yolo_server_1
     environment:
       - IMAGE_URL=${LOCALHOST_PICTURE_PATH}
+    volumes:
+      - ${BIND_MOUNT_PATH}:/app/images
     env_file:
-      - .env    
+      - .env   
