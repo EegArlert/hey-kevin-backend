@@ -4,9 +4,9 @@ services:
     # volumes:
     #   - ${BIND_MOUNT_PATH}:/app/images
     ports:
-      - 8000:8000
-    container_name: yolo_server_1
+      - "8000:8000"
+    container_name: kevins-segmentation
     environment:
-      - IMAGE_URL=${LOCALHOST_PICTURE_PATH}
+      - IMAGE_URL=${IMAGE_URL}
     env_file:
       - .env    
