@@ -11,4 +11,4 @@ services:
       - IMAGE_URL=${IMAGE_URL}
       - API_KEYS=${API_KEYS}
     env_file:
-      - .env    
+      - .env   
