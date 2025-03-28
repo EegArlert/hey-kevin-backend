@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY ./segmentation.py /app
+COPY . /app
 
 EXPOSE 8000
 

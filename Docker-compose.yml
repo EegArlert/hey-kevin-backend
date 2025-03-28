@@ -1,6 +1,7 @@
 services: 
   image_processing:
     image: ${DOCKER_IMAGE_NAME}
+    # Below is for development purpose
     # volumes:
     #   - ${BIND_MOUNT_PATH}:/app/images
     ports:
@@ -8,5 +9,6 @@ services:
     container_name: kevins-segmentation
     environment:
       - IMAGE_URL=${IMAGE_URL}
+      - API_KEYS=${API_KEYS}
     env_file:
       - .env    
