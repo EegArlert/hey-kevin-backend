@@ -1,14 +1,40 @@
 services: 
   image_processing:
-    image: ${DOCKER_IMAGE_NAME}
-    # Below is for development purpose
-    # volumes:
-    #   - ${BIND_MOUNT_PATH}:/app/images
+    build:
+      context: .
+      dockerfile: image_processing/Dockerfile
     ports:
       - "8000:8000"
     container_name: kevins-segmentation
+    volumes:
+      - ./status:/app/status
     environment:
-      - IMAGE_URL=${IMAGE_URL}
-      - API_KEYS=${API_KEYS}
+      - SERVER_API_KEYS=${SERVER_API_KEYS}
     env_file:
-      - .env   
+      - .env
+
+  bing:
+    build:
+      context: .
+      dockerfile: bing/Dockerfile
+    ports:
+      - "8001:8001"
+    container_name: kevins-bing
+    environment:
+      - BING_API_URI=${BING_API_URI}
+      - BING_API_KEYS=${BING_API_KEY}
+      - SERVER_API_KEYS=${SERVER_API_KEYS}
+    env_file:
+      - .env
+
+  gpt_service:
+    build:
+      context: .
+      dockerfile: chat_gpt/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SERVER_API_KEYS=${SERVER_API_KEYS}
+    env_file:
+      - .env

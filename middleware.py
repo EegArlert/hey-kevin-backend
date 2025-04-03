@@ -3,7 +3,7 @@ import os
 
 # This function will be added to FastAPI app later
 def api_key_middleware(app):
-    allowed_keys = os.getenv("API_KEYS", "").split(",")
+    allowed_keys = os.getenv("SERVER_API_KEYS", "").split(",")
 
     @app.middleware("http")
     async def verify_api_key(request: Request, call_next):

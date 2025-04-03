@@ -1,14 +1,17 @@
 import os
 import cv2
-import numpy as np
-import uvicorn
 import json
+import uuid
+import numpy as np
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from image_processing.middleware import api_key_middleware
+import sys
+sys.path.append("..")
+from middleware import api_key_middleware
 from ultralytics import SAM
+from image_processing.background_processor import process_bing_and_gpt
 
 # Loads .env locally
 load_dotenv()
@@ -23,7 +26,6 @@ if not os.path.exists(image_dir):
 # Serve images statically at "/images"
 app.mount("/images", StaticFiles(directory="/app/images"), name="images")
 
-# Load YOLO model
 model = SAM("mobile_sam.pt")
 
 def overlay_mask_with_outline(image, mask, color=(0, 255, 0), alpha=0.5, outline_thickness=5):
@@ -31,7 +33,7 @@ def overlay_mask_with_outline(image, mask, color=(0, 255, 0), alpha=0.5, outline
     mask = (mask > 0.5).astype(np.uint8) * 255
     mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
-    # === Draw the colored region only where mask is active ===
+    # Draw the colored region only where mask is active
     overlay = image.copy()
     colored_mask = np.zeros_like(image)
     colored_mask[:, :] = color
@@ -47,11 +49,11 @@ def overlay_mask_with_outline(image, mask, color=(0, 255, 0), alpha=0.5, outline
 
     return overlay
 
-
-
 @app.post("/segment")
-async def segment(file: UploadFile = File(...)):
+async def segment(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
+        session_id = str(uuid.uuid4())
+        print(f"current session ID {session_id}")
         # Read image file
         contents = await file.read()
         np_arr = np.frombuffer(contents, np.uint8)
@@ -66,7 +68,7 @@ async def segment(file: UploadFile = File(...)):
         img_h, img_w, _ = img.shape  # Get image dimensions
 
         # Define a bounding box around the center (adjust size as needed)
-        box_size = 700  # Change this to control the bounding box size
+        box_size = 700
         x_min = max(0, img_w // 2 - box_size)
         y_min = max(0, img_h // 2 - box_size)
         x_max = min(img_w, img_w // 2 + box_size)
@@ -77,45 +79,53 @@ async def segment(file: UploadFile = File(...)):
 
         print("[DEBUG] SAM model finished processing.")
 
-        # Ensure masks exist
         result = results[0]
         if result.masks is None:
             print("[INFO] No segmentation masks found.")
             return JSONResponse(content={"message": "No segmentation masks found", "segmented_image": None})
 
-        # Get segmentation mask
         masks = result.masks.data.cpu().numpy()
-        # print(masks)
-        
         json_masks = json.dumps({'nums': masks.tolist()})
-        # json_masks = pd.Series(masks).to_json(orient='values')
-        print(json_masks)
         print("converting to json_masks successful")
 
-        # Apply mask to the image
         segmented_img = img.copy()
         for mask in masks:
             segmented_img = overlay_mask_with_outline(segmented_img, mask)
-            
-        print ([mask.astype(int).tolist() for mask in masks])
 
-        # Save segmented image
         segmented_img_path = "/app/images/segmented.jpg"
         cv2.imwrite(segmented_img_path, segmented_img)
 
         print("[INFO] Segmented image saved successfully.")
 
-        # Return processed image path
+        # Trigger background task for Bing + GPT
+        print("Background task being added")
+        background_tasks.add_task(process_bing_and_gpt, segmented_img_path, session_id)
+        print("Background task finished")
+
         return JSONResponse(content={
             "message": "Segmentation completed.",
-            "mask": json_masks
-            # "segmented_image_path": str(os.getenv("IMAGE_URL"))
+            "mask": json_masks,
+            "segmented_image_path": os.getenv("LOCAL_HOST_IMAGE_PATH"),
+            "session_id": session_id
         })
- 
+
     except Exception as e:
         print("[ERROR]", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)}) 
+    
+
+    
+# Method to check the status of session_id. Return gpt api response if found.
+@app.get("/status/{session_id}")
+async def get_status(session_id: str):
+    try:
+        file_path = f"/app/status/{session_id}.json"
+        if not os.path.exists(file_path):
+            return JSONResponse(status_code=202, content={"status":"processing"})
+        
+        with open(file_path, "r") as f:
+            result = json.load(f)
+            return result
+        
+    except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
