@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -132,70 +132,3 @@ async def comment(request: Request):
             print("\nGenerated", i, "comment", ":", parsed_result[i])
         print("\n")
     return parsed_result
-
-
-
-# BELOW IS INTEGRATION FOR SENDING PICTURE TO OPENAI
-
-# comments_generate_message = (
-#     "Look at the image and give me a JSON output (only JSON, no extra text). "
-#     "Generate three different captions for what you see: one sarcastic, one witty, and one funny. "
-#     "The format must strictly be: {\"sarcastic\": \"text\", \"witty\": \"text\", \"funny\": \"text\"}"
-#     "DO NOT add any explanation. Just output a valid JSON."
-# )
-
-# @app.post("/comment")
-# async def comment(file: UploadFile = File(...)):
-#     try:
-#         # Read and encode the image
-#         image_bytes = await file.read()
-#         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-#         messages = [
-#             {
-#                 "role": "user",
-#                 "content": [
-#                     {"type": "text", "text": comments_generate_message},
-#                     {
-#                         "type": "image_url",
-#                         "image_url": {
-#                             "url": f"data:{file.content_type};base64,{image_base64}"
-#                         },
-#                     },
-#                 ],
-#             }
-#         ]
-
-#         # Call OpenAI Vision model
-#         start = time.time()
-#         completion = client.chat.completions.create(
-#             model="gpt-4o",
-#             messages=messages,
-#             temperature=0.5
-#         )
-#         response_time = time.time() - start
-#
-#         json_result = completion.choices[0].message.content
-#         print("[RAW GPT RESPONSE]")
-#         print(repr(json_result))
-    
-#         # Strip ```json and ``` from the response
-#         cleaned = re.sub(r"```(?:json)?\n?", "", json_result).strip("` \n")
-
-#         try:
-#             parsed = json.loads(cleaned)
-#         except json.JSONDecodeError as e:
-#             print(f"[JSON ERROR] {e}")
-#             print("[CLEANED RESPONSE]", cleaned)
-#             raise HTTPException(status_code=500, detail="OpenAI did not return valid JSON")
-        
-#         return JSONResponse(content=parsed)
-
-#     except Exception as e:
-#         print(f"[ERROR] {e}")
-#         fallback = {
-#             "sarcastic": "AI couldn't think of anything. Classic.",
-#             "witty": "Oops. Even the machine needs a break.",
-#             "funny": "Picture too powerful. Broke my circuits.",
-#         }
-#         return JSONResponse(content=fallback)

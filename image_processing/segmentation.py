@@ -28,26 +28,50 @@ app.mount("/images", StaticFiles(directory="/app/images"), name="images")
 
 model = SAM("mobile_sam.pt")
 
-def overlay_mask_with_outline(image, mask, color=(0, 255, 0), alpha=0.5, outline_thickness=5):
-    # Convert to binary mask
-    mask = (mask > 0.5).astype(np.uint8) * 255
-    mask_resized = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
+def compress_img(image_path):
+    img = cv2.imread(image_path)
 
-    # Draw the colored region only where mask is active
-    overlay = image.copy()
-    colored_mask = np.zeros_like(image)
-    colored_mask[:, :] = color
+    max_size_mb=1.0
+    scale_factor = 0.4  # Adjust as needed to get desired size
+    quality = 95  # keeps the return quality of the image high
 
-    # Apply blending only to masked area
-    overlay[mask_resized > 0] = cv2.addWeighted(
-        image[mask_resized > 0], 1 - alpha, colored_mask[mask_resized > 0], alpha, 0
-    )
+    #SEE: https://stackoverflow.com/questions/66311867/how-to-scale-down-an-image-to-1mb
+    #SEE: https://docs.opencv.org/4.x/d4/da8/group__imgcodecs.html#ga8ac397bd09e48851665edbe12aa28f25
+    width = int(img.shape[1] * scale_factor)
+    height = int(img.shape[0] * scale_factor)
+    resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
 
-    # === Find contours and draw a thick outline ===
+    cv2.imwrite(image_path, resized, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    file_size = os.path.getsize(image_path) / (1024 * 1024)
+
+    print(f"Image resized to {width}x{height} and compressed to {file_size:.2f} MB")
+
+    if file_size > max_size_mb:
+        print(f"Warning: Image size exceeds {max_size_mb}MB.")
+        #in which case reduced quality or scale would help
+        #need to add error handling to this
+
+def blur_and_outline(image, mask, outline_color=(0, 255, 255), outline_thickness=3, blur_strength=45, darken_factor=0.4):
+    # Prep mask
+    mask_bin = (mask > 0.5).astype(np.uint8)
+    mask_resized = cv2.resize(mask_bin, (image.shape[1], image.shape[0]))
+    mask_3d = np.repeat(mask_resized[:, :, np.newaxis], 3, axis=2)
+
+    # Blur background
+    blurred = cv2.GaussianBlur(image, (blur_strength, blur_strength), 0)
+
+    # Darken background
+    darkened = (blurred * darken_factor).astype(np.uint8)
+
+    # Combine sharp subject with dark blurry background
+    combined = (image * mask_3d + darkened * (1 - mask_3d)).astype(np.uint8)
+
+    # Draw outline on top
+    outlined_img = combined.copy()
     contours, _ = cv2.findContours(mask_resized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(overlay, contours, -1, color, thickness=outline_thickness)
+    cv2.drawContours(outlined_img, contours, -1, outline_color, thickness=outline_thickness)
 
-    return overlay
+    return outlined_img
 
 @app.post("/segment")
 async def segment(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -90,22 +114,36 @@ async def segment(background_tasks: BackgroundTasks, file: UploadFile = File(...
 
         segmented_img = img.copy()
         for mask in masks:
-            segmented_img = overlay_mask_with_outline(segmented_img, mask)
+            segmented_img = blur_and_outline(segmented_img, mask)
+            
 
-        segmented_img_path = "/app/images/segmented.jpg"
+        # Creating a unique image path for each session
+        filename_segmented = f"{session_id}-segmented.jpg"
+        filename_reduced = f"{session_id}-reduced.jpg"
+        segmented_img_path = f"/app/images/{filename_segmented}"
+        reduced_img_size_path = f"/app/images/{filename_reduced}"
+        
+        
+        # Segmenting the image
         cv2.imwrite(segmented_img_path, segmented_img)
+        print("[INFO] Segmented image successfully saved")
+        
+        # Reducing the image size function
+        cv2.imwrite(reduced_img_size_path, img)
+        compress_img(reduced_img_size_path)
 
-        print("[INFO] Segmented image saved successfully.")
+        print("[INFO] Compressed image successfully saved .")
 
         # Trigger background task for Bing + GPT
         print("Background task being added")
-        background_tasks.add_task(process_bing_and_gpt, segmented_img_path, session_id)
+        background_tasks.add_task(process_bing_and_gpt, reduced_img_size_path, session_id)
         print("Background task finished")
 
         return JSONResponse(content={
             "message": "Segmentation completed.",
             "mask": json_masks,
-            "segmented_image_path": os.getenv("LOCAL_HOST_IMAGE_PATH"),
+            "segmented_image_path": f"{os.getenv('LOCALHOST_IMAGE_PATH_SEG')}/images/{filename_segmented}",
+            "reduced_image_size_path": f"{os.getenv('LOCALHOST_IMAGE_PATH_RED')}/images/{filename_reduced}",
             "session_id": session_id
         })
 

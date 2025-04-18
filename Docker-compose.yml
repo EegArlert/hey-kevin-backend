@@ -1,15 +1,17 @@
-services: 
+services:
   image_processing:
     build:
       context: .
       dockerfile: image_processing/Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8001"
     container_name: kevins-segmentation
     volumes:
       - ./status:/app/status
+      - ./shared-images:/app/images
     environment:
       - SERVER_API_KEYS=${SERVER_API_KEYS}
+      - FEED_SERVER_API_KEY=${FEED_SERVER_API_KEY}
     env_file:
       - .env
 
@@ -18,8 +20,10 @@ services:
       context: .
       dockerfile: bing/Dockerfile
     ports:
-      - "8001:8001"
+      - "8002:8002"
     container_name: kevins-bing
+    volumes:
+      - ./shared-images:/app/images
     environment:
       - BING_API_URI=${BING_API_URI}
       - BING_API_KEYS=${BING_API_KEY}
@@ -32,7 +36,10 @@ services:
       context: .
       dockerfile: chat_gpt/Dockerfile
     ports:
-      - "8002:8002"
+      - "8003:8003"
+    container_name: kevins-gpt
+    volumes:
+      - ./shared-images:/app/images
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SERVER_API_KEYS=${SERVER_API_KEYS}

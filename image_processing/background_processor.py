@@ -5,17 +5,17 @@ import uuid
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI
 
-def process_bing_and_gpt(segmented_img_path, session_id):
+def process_bing_and_gpt(reduced_image_size_path, session_id):
     print("[BACKGROUND] Task started with session_id:", session_id)
     try:
         print("[BACKGROUND] Starting Bing + GPT processing...")
 
         # Bing API req
-        bing_url = "http://192.168.1.164:8001/detect"
+        bing_url = os.getenv("BING_LOCALHOST_PATH")
         
-        headers = {"x-api-key": os.getenv("FEED_BING_SERVER_API_KEY", "")}
-        with open(segmented_img_path, "rb") as img_file:
-            files = {"file": ("segmented.jpg", img_file.read(), "image/jpeg")}
+        headers = {"x-api-key": os.getenv("FEED_SERVER_API_KEY", "")}
+        with open(reduced_image_size_path, "rb") as img_file:
+            files = {"file": ("reduced.jpg", img_file.read(), "image/jpeg")}
 
         response = requests.post(bing_url, files=files, headers=headers)
         
@@ -38,11 +38,11 @@ def process_bing_and_gpt(segmented_img_path, session_id):
         print(f"[BING] Detected object: {query_label}")
 
         # Forward label to gpt service api
-        gpt_url = "http://192.168.1.164:8002/comment"
+        gpt_url = os.getenv("OPENAI_LOCALHOST_PATH")
         payload = {"label": query_label}
         headers = {
             "Content-Type": "application/json",
-            "x-api-key": os.getenv("FEED_BING_SERVER_API_KEY", "")
+            "x-api-key": os.getenv("FEED_SERVER_API_KEY", "")
         }
         print("[DEBUG] Using API Key:", headers["x-api-key"])
         gpt_response = requests.post(gpt_url, data=json.dumps(payload), headers=headers)

@@ -109,6 +109,9 @@ def name_finder(names, query):
 # writes export json and returns json 
 def export_data(names, displayText, query):
     try:
+        if not query and not names:
+            return json.dumps({"error": "No query and no data available."})
+        
         minLength = min(len(names), len(displayText))
 
         exportStructure = {
@@ -136,6 +139,7 @@ def export_data(names, displayText, query):
 @app.post("/detect")
 async def detect(request: Request, file: UploadFile = File(...)):
     try:
+        
         print("[BING] Incoming request")
         print("[BING] x-api-key:", request.headers.get("x-api-key"))
         # Save the uploaded image

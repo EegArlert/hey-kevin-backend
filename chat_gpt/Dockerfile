@@ -6,6 +6,6 @@ COPY . /app
 
 RUN pip install fastapi python-multipart openai uvicorn python-dotenv
 
-EXPOSE 8002
+EXPOSE 8003
 
 CMD ["uvicorn", "chat_gpt.gpt_service:app", "--host", "0.0.0.0", "--port", "8002"]
