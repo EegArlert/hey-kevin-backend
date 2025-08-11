@@ -1,6 +1,6 @@
 # hey-kevin-backend
 
-This container hosts the YOLO server responsible for handling HTTP requests and responses to perform image segmentation. It processes incoming images, applies segmentation, and returns the modified images with masks. The output images are stored in local directory app/lib/assets/segment
+This container hosts the server responsible for handling HTTP requests and responses to perform image segmentation with MobileSAM. It processes incoming images, applies segmentation, and returns the modified images with masks. The output images are stored in local directory app/lib/assets/segment
 
 ## Getting Started
 
